@@ -1,6 +1,6 @@
 # Estimating vaccine efficacy and durability following placebo crossover
 
-This repository contains code for reproducing results presented in "Assessing Vaccine Durability in Randomized Trials Following Placebo Crossover" by Jon Fintzi and Dean Follmann. 
+This repository contains code for reproducing results presented in "Assessing Vaccine Durability in Randomized Trials Following Placebo Crossover" by Jon Fintzi and Dean Follmann. A vignette reproducing the example placebo crossover trial with waning efficacy is provided in the (vignette)[https://github.com/fintzij/ve_placebo_crossover/tree/main/vignette] folder of the repository, and code reproducing all other results in the manuscript are provided in the (code)[https://github.com/fintzij/ve_placebo_crossover/tree/main/code] folder. 
 
 ## Abstract
 
