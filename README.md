@@ -1,2 +1,7 @@
-# ve_placebo_crossover
-Estimating vaccine efficacy and durability under placebo crossover. 
+# Estimating vaccine efficacy and durability following placebo crossover
+
+This repository contains code for reproducing results presented in "Assessing Vaccine Durability in Randomized Trials Following Placebo Crossover" by Jon Fintzi and Dean Follmann. 
+
+## Abstract
+
+Randomized vaccine trials are used to assess vaccine efficacy and to characterize the durability of vaccineinduced protection. There is a broad consensus that placebo volunteers in COVID-19 vaccine trials should be offereda vaccine once efficacy has been established. This will likely lead to most placebo volunteers crossing over to thevaccine arm, thus complicating the assessment of long term durability. We show how to analyze durability following placebo crossover and demonstrate that the vaccine efficacy profile that would be observed in a placebo controlledtrial is recoverable in a trial with placebo crossover. This result holds no matter when the crossover occurs and withno assumptions about the form of the efficacy profile. We only require that the vaccine efficacy profile applies tothe newly vaccinated irrespective of the timing of vaccination. We develop different methods to estimate efficacywithin the context of a proportional hazards regression model and explore the implications of placebo crossoverfor estimation of vaccine efficacy under different efficacy dynamics and study designs via simulation. We apply ourmethods to simulated COVID-19 vaccine trials with waning vaccine efficacy and a total follow-up of 2 years.
