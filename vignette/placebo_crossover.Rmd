@@ -8,13 +8,12 @@ output: html_document
 ---
 
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE, message = FALSE, cache.lazy = FALSE)
+knitr::opts_chunk$set(echo = TRUE, message = FALSE)
 ```
 
 ```{r libraries, include = FALSE}
 library(simsurv) # simulates data
 library(survival)
-library(survminer)
 library(tidyverse)
 library(ggthemes)
 library(knitr)
@@ -42,7 +41,7 @@ rep_est = function(est, se, digs = 2) {
 
 Randomized vaccine trials are used to assess vaccine efficacy and to characterize the durability of vaccine induced protection. There is a broad consensus that placebo volunteers in COVID-19 vaccine trials should be offered a vaccine once efficacy has been established. This will likely lead to most placebo volunteers crossing over to the vaccine arm, thus complicating the assessment of long term durability. 
 
-In this vignette, we provide code for simulating COVID-19 vaccine trials and assessing vaccine efficacy (VE) and durability of vaccine induced protection within a Cox proportional hazards framework. The code supplied in this vignette reproduces the example trials in Fintzi and Follmann (2021), but is flexible and can be modified to accommodate staggered entry, frailties, waning or constant VE, and various study designs including placebo-crossover, continuous crossover, or standard parallel arm trials. 
+In this vignette, we provide code for simulating COVID-19 vaccine trials and assessing vaccine efficacy (VE) and durability of vaccine induced protection within a Cox proportional hazards framework. The code supplied in this vignette reproduces the example trials in Fintzi and Follmann (2021), but is flexible and can be modified to accommodate staggered entry, frailties, waning or constant VE, and various study designs including placebo-crossover, continuous crossover, or standard parallel arm trials. Raw code reproducing the various simulations in the manuscript are provided in the following GitHub repository: (((()))). 
 
 # Setup
 
@@ -121,8 +120,9 @@ cumul_haz = function(t, x, betas, ...) {
   contribs = endpoints_l >= tstart & endpoints_r <= min(t, 2.25)
   
   # treatment indicators at left endpoints
-  trt_inds = ifelse((x[["trt"]] == 1 & endpoints_l >= x[["entry"]]) |
-                      (x[["trt"]] == 0 & endpoints_l >= x[["crossover"]]), 1, 0)
+  trt_inds = 
+    ifelse((x[["trt"]] == 1 & endpoints_l >= x[["entry"]]) |
+             (x[["trt"]] == 0 & endpoints_l >= x[["crossover"]]), 1, 0)
   
   # now compute the cumulative hazards
   for(s in seq_along(t)) {
@@ -177,103 +177,107 @@ sim_one <- function(n,                 # number of participants
                     frailty_pars = NULL) { # gamma frailty dist params
     
     if(!is.null(t_cross)) {
-    
-    # create a data frame with subject IDs and treatment indicators
-    covars <- data.frame(id = seq_len(n),
-                         trt = rbinom(n, 1, pvacc),
-                         entry = runif(n, 0, enrolldur),
-                         crossover = 0,
-                         frailty = 1)
-    
-    if(!is.null(frailty_pars)) {
-      covars$frailty = rgamma(n, shape = frailty_pars[1], rate = frailty_pars[2])
+        
+        # create a data frame with subject IDs and treatment indicators
+        covars <- data.frame(id = seq_len(n),
+                             trt = rbinom(n, 1, pvacc),
+                             entry = runif(n, 0, enrolldur),
+                             crossover = 0)
+        
+        if(!is.null(frailty_pars)) {
+          covars$frailty = 
+            rgamma(n, shape = gamma_pars[1], rate = gamma_pars[2])
+        } else {
+          covars$frailty = 1
+        }
+        
+        # simulate crossover times for placebo group
+        covars$crossover[covars$trt == 0] = 
+            t_cross + runif(sum(covars$trt == 0), 1e-5, 1e-5 + crossdur)
+        
+        # simulate event times
+        dat <- simsurv::simsurv(betas = c(pars, t0 = 0), 
+                                x = covars,
+                                cumhazard = cumul_haz,
+                                maxt = 2.25,
+                                rootfun = qlogis,
+                                ids = covars$id,
+                                idvar = "id")
+        
+        dat <- merge(covars, dat) %>% arrange(eventtime)
+        
+    } else if(!is.null(n_cross)) {
+        
+        # create a data frame with subject IDs and treatment indicators
+        covars_1 <- data.frame(id = seq_len(n),
+                               trt = rbinom(n, 1, pvacc),
+                               entry = runif(n, 0, enrolldur),
+                               crossover = Inf)
+        
+        if(!is.null(frailty_pars)) {
+          covars$frailty = 
+            rgamma(n, shape = gamma_pars[1], rate = gamma_pars[2])
+        } else {
+          covars$frailty = 1
+        }
+        
+        # simulate event times
+        dat_1 <- 
+            simsurv::simsurv(betas = c(pars, t0 = 0),
+                             x = covars_1,
+                             cumhazard = cumul_haz,
+                             maxt = 2.25,
+                             rootfun = qlogis,
+                             ids = covars_1$id,
+                             idvar = "id")
+        
+        # sort by event times
+        dat_1 <- dat_1 %>% arrange(eventtime)
+        n_events = cumsum(dat_1$status)
+        
+        # grab the crossover time
+        t_cross = dat_1$eventtime[n_events == n_cross][1]
+        
+        # cache the pre-crossover data
+        dat_1 <- dat_1 %>% filter(dat_1$eventtime <= t_cross)
+        dat_sim_1 = merge(covars_1, dat_1) %>%  arrange(eventtime)
+        
+        # subset to get covariates for next part of the simulation
+        covars_2 = covars_1[!covars_1$id %in% dat_sim_1$id, ]
+        
+        # generate crossover times
+        covars_2$crossover[covars_2$trt == 0] = 
+            t_cross + runif(sum(covars_2$trt == 0), 1e-5, 1e-5 + crossdur)
+        
+        # keep simulating
+        dat_2 <- 
+            simsurv::simsurv(betas = c(pars, t0 = t_cross),
+                             x = covars_2,
+                             cumhazard = cumul_haz,
+                             maxt = 2.25,
+                             rootfun = qlogis,
+                             ids = covars_2$id,
+                             idvar = "id")
+        
+        # sort by event time
+        dat_2 <- dat_2 %>% arrange(id)
+        
+        # merge covars_2 and dat_2
+        dat_sim_2 = merge(covars_2, dat_2) %>% arrange(eventtime)
+        
+        # combine simulated datasets
+        dat = rbind(dat_sim_1, dat_sim_2)
+        dat = dat %>% arrange(eventtime)  
     }
     
-    # simulate crossover times for placebo group
-    covars$crossover[covars$trt == 0] = 
-      t_cross + runif(sum(covars$trt == 0), 1e-5, 1e-5 + crossdur)
+    dat$id = seq_along(dat$id)
     
-    # simulate event times
-    dat <- simsurv::simsurv(betas = c(pars, t0 = 0), 
-                            x = covars,
-                            cumhazard = cumul_haz,
-                            maxt = 2.25,
-                            rootfun = qlogis,
-                            ids = covars$id,
-                            idvar = "id")
+    # censor people at two years post-study entry
+    cens_inds = dat$eventtime > (dat$entry + 2)
+    dat$eventtime[cens_inds] = dat$entry[cens_inds] + 2
+    dat$status[cens_inds] = 0
     
-    dat <- merge(covars, dat) %>% arrange(eventtime)
-    
-  } else if(!is.null(n_cross)) {
-    
-    # create a data frame with subject IDs and treatment indicators
-    covars_1 <- data.frame(id = seq_len(n),
-                           trt = rbinom(n, 1, pvacc),
-                           entry = runif(n, 0, enrolldur),
-                           crossover = Inf,
-                           frailty = 1)
-    
-    if(!is.null(frailty_pars)) {
-      covars$frailty = rgamma(n, shape = frailty_pars[1], rate = frailty_pars[2])
-    }
-    
-    # simulate event times
-    dat_1 <- 
-      simsurv::simsurv(betas = c(pars, t0 = 0),
-                       x = covars_1,
-                       cumhazard = cumul_haz,
-                       maxt = 2.25,
-                       rootfun = qlogis,
-                       ids = covars_1$id,
-                       idvar = "id")
-    
-    # sort by event times
-    dat_1 <- dat_1 %>% arrange(eventtime)
-    n_events = cumsum(dat_1$status)
-    
-    # grab the crossover time
-    t_cross = dat_1$eventtime[n_events == n_cross][1]
-    
-    # cache the pre-crossover data
-    dat_1 <- dat_1 %>% filter(dat_1$eventtime <= t_cross)
-    dat_sim_1 = merge(covars_1, dat_1) %>%  arrange(eventtime)
-    
-    # subset to get covariates for next part of the simulation
-    covars_2 = covars_1[!covars_1$id %in% dat_sim_1$id, ]
-    
-    # generate crossover times
-    covars_2$crossover[covars_2$trt == 0] = 
-      t_cross + runif(sum(covars_2$trt == 0), 1e-5, 1e-5 + crossdur)
-    
-    # keep simulating
-    dat_2 <- 
-      simsurv::simsurv(betas = c(pars, t0 = t_cross),
-                       x = covars_2,
-                       cumhazard = cumul_haz,
-                       maxt = 2.25,
-                       rootfun = qlogis,
-                       ids = covars_2$id,
-                       idvar = "id")
-    
-    # sort by event time
-    dat_2 <- dat_2 %>% arrange(id)
-    
-    # merge covars_2 and dat_2
-    dat_sim_2 = merge(covars_2, dat_2) %>% arrange(eventtime)
-    
-    # combine simulated datasets
-    dat = rbind(dat_sim_1, dat_sim_2)
-    dat = dat %>% arrange(eventtime)  
-  }
-  
-  dat$id = seq_along(dat$id)
-  
-  # censor people at two years post-study entry
-  cens_inds = dat$eventtime > (dat$entry + 2)
-  dat$eventtime[cens_inds] = dat$entry[cens_inds] + 2
-  dat$status[cens_inds] = 0
-  
-  return(dat)
+    return(dat)
 }
 ```
 
@@ -396,7 +400,7 @@ reshape_dat <- function(dat, align_entry = FALSE) {
 
 # Simulating a COVID-19 Vaccine Trial
 
-Let's go ahead and simulate a trial. We'll set the parameters and RNG seed, then simulate a trial. Note again that we are crossing over the placebo arm at 1 year post study initiation and that VE wanes from 85% to 35%, linearly on the log hazard scale, over 1.5 years.
+Let's go ahead and simulate a trial. We'll set the parameters and RNG seed, then simulate a trial. 
 
 ```{r sim_trial, echo = TRUE, cache = TRUE}
 
@@ -411,15 +415,15 @@ n_cross = NULL # we're not crossing at some number of events, this is NULL
 sim_pars_waning = 
     c(VE_max = log(1 - 0.85), # theta_1
       VE_decay = 0.977558,    # theta_2
-      lambda_1 = 0.0134,      # 50 / 3 months
-      lambda_2 = 0.02,        # 75 / 3 months
-      lambda_3 = 0.0134,      # 50 / 3 months
-      lambda_4 = 0.0067,      # 25  / 3 months
-      lambda_5 = 0.0067,      # 25 / 3 months
-      lambda_6 = 0.01,        # 37.5 / 3 months
-      lambda_7 = 0.0067,      # 25 / 3 months
-      lambda_8 = 0.0033,      # 12.5 / 3 mo
-      lambda_9 = 0.0067)      # 25 / 3 mo
+      lambda_1 = 0.0134, # 50 / 3 months
+      lambda_2 = 0.02,   # 75 / 3 months
+      lambda_3 = 0.0134, # 50 / 3 months
+      lambda_4 = 0.0067, # 25  / 3 months
+      lambda_5 = 0.0067, # 25 / 3 months
+      lambda_3 = 0.01,   # 37.5 / 3 months
+      lambda_7 = 0.0067, # 25 / 3 months
+      lambda_8 = 0.0033, # 12.5 / 3 mo
+      lambda_9 = 0.0067) # 25 / 3 mo
 
 # set.seed
 set.seed(1834)
@@ -432,141 +436,10 @@ sim_waning <-
             t_cross = t_cross,
             cumul_haz = cumul_haz)
 
-# reshape the simulated dataset
-simr_waning <- reshape_dat(sim_waning, align_entry = FALSE)
-```
-
-Here's what our simulated data looks like. Note that it will be convenient to have vaccination coded as a time-varying covariate, which for the placebo group will change values after the placebo participants are crossed over.
-
-```{r plot_dat, echo = FALSE, cache = TRUE, dependson="sim_trial"}
-# plot it
-plot_sim <- survfit(Surv(entry, eventtime, status) ~ trt, data = sim_waning)
-ggsurvplot(plot_sim, 
-           data = sim_waning,
-           palette = c("#E7B800", "#2E9FDF"),
-           ylim = c(0.98, 1),
-           theme = theme_minimal())
-```
-
-```{r dat_table, cache = TRUE, echo = FALSE, dependson="sim_trial"}
-simr_waning %>% 
-  kbl() %>%
-  kable_paper(bootstrap_options = c("striped", "hover", "condensed", "responsive"),
-                full_width = FALSE) %>% 
-  scroll_box(width = "100%", height = "200px")
-```
-
-# Inference
-
-We'll fit two models. The first is the true data generating model, where VE decays linearly on the log hazard scale. Second, we'll model the VE decay profile using a P-spline. In practice, it is important in both of these models to recognize that we need to evaluate the value of the time-varying VE profile for each participant at each event time, not just at the failure time of that particular participant. The `tt()` functionality in the `survival` package will facilitate this. 
-
-We'll start with the log-linear decay model
-```{r fit_lin, cache = TRUE, echo = TRUE, dependson="sim_trial"}
-# Cox PH model with log-linear decay
-# note that time since vaccination is a time-varying parameter.
-# also, vacc is a time-varying covariate.
-fit_lin = 
-  coxph(formula =
-                  Surv(time = tstart, 
-                       time2 = tstop, 
-                       event = status) ~ vacc + tt(tvacc), 
-              tt = function(tvacc, t, ...) {
-                  pmax(0, t - tvacc)
-              },
-              data = simr_waning)
-
-fit_lin
-```
-
-And now we fit the P-spline decay model.
-
-```{r fit_ps, cache = TRUE, echo = TRUE, dependson="sim_trial"}
-# p-spline decay model. again, time since vaccination is a time-varying
-# parameter and vacc is a time-varying covariate.
-fit_ps = 
-  coxph(formula =
-                  Surv(time = tstart, 
-                       time2 = tstop, 
-                       event = status) ~ vacc + tt(tvacc),
-              tt = function(tvacc, t, ...) {
-                  pspline(pmax(0, t - tvacc), df = 3, nterm = 8)
-              },
-              data = simr_waning)
-
-fit_ps
-```
-
-The `survival` package nicely partitions the P-spline into a linear and non-linear trend. The non-linearity is not statistically significant. We also can test for time-varying VE in each model using a likelihood ratio test. We refit the models without the decay terms, and then calculate our LRT test statistics which are compared to chi-square distributions with degrees of freedom equal to the change in the number of parameters (or effective number of parameters, in the case of the P-spline) between the unrestricted and restricted models. Both tests emphatically reject the null hypothesis of constant VE. 
-
-```{r lrt, echo = TRUE}
-
-# model without waning VE
-lin_nowaning = update(fit_lin, .~. - tt(tvacc))
-ps_nowaning = update(fit_ps, .~. - tt(tvacc))
-    
-# likelihood ratio test for waning VE
-lin_lrt_pval = 
-    1 - pchisq(2 * (fit_lin$loglik - lin_nowaning$loglik)[2], df = 1)
-    
-ps_lrt_pval = 
-  1 - pchisq(2 * (fit_lin$loglik - lin_nowaning$loglik)[2], df = fit_ps$df[2] - 1)
-
-# print p-values
-lin_lrt_pval
-ps_lrt_pval
-```
-
-We next extract the model estimates and covariance matrices and plot VE(t). The parameterization of P-splines in the survival package is a bit odd so we have to recenter the spline term. 
-
-```{r calc_VE}
-# estimates of VE(t)
-VE_ests = 
-  expand.grid(time = seq(0,2,by=0.01),
-              Model = c("log-linear", "P-spline"))
-
-VE_ests$truth = log(0.15) + 0.977558 * VE_ests$time
-
-times_lin = cbind(1, seq(0,2,by=0.01))
-times_ps = cbind(1, pspline(seq(0,2,by=0.01), df = 3, nterm = 8))
-centvec = rep(0, ncol(times_ps)); centvec[2] = 1 # for centering the spline
-centvec = rep(1, ncol(times_ps)) %*% diag(centvec)
-
-VE_ests$est = 
-  c(times_lin %*% coef(fit_lin),
-    apply(times_ps, 1, function(x) (x - centvec) %*% coef(fit_ps)))
-
-VE_ests$lower = 
-  VE_ests$est - 1.96 * c(
-    sqrt(apply(times_lin, 1, function(x) t(x) %*% vcov(fit_lin) %*% x)),
-    sqrt(apply(times_ps, 1, function(x) (x - centvec) %*% vcov(fit_ps) %*% t(x - centvec))))
-
-VE_ests$upper = 
-  VE_ests$est + 1.96 * c(
-    sqrt(apply(times_lin, 1, function(x) t(x) %*% vcov(fit_lin) %*% x)),
-    sqrt(apply(times_ps, 1, function(x) (x - centvec) %*% vcov(fit_ps) %*% t(x - centvec))))
-```
-
-```{r plot_VE}
-require(ggthemes)
-VE_ests %>% 
-  ggplot(aes(x = time)) + 
-  geom_line(aes(y = truth, linetype = "Truth"), linetype = "dashed") + 
-  geom_ribbon(aes(ymin = lower, ymax = upper, fill = Model), alpha = 0.4) + 
-  geom_line(aes(y = est, colour = Model)) + 
-  facet_grid(. ~ Model, scales = "free") + 
-  theme_minimal() +
-  scale_color_tableau(palette = "Tableau 10", direction = -1) +
-  scale_fill_tableau(palette = "Tableau 10", direction = -1) +
-  scale_y_continuous(breaks = seq(-3, 2.5, by = 1),
-                     labels = round(1 - exp(seq(-3,2.5,by=1)), digits = 1)) +
-  labs(x = "Years since vaccination", y = "Vaccine efficacy", 
-       title = "Vaccine efficacy vs. years since vaccination") + 
-  theme(legend.position = "none",
-        text = element_text(family = "serif", size = 20))
 ```
 
 
 # References
 
-- Brilleman S (2019). simsurv: Simulate Survival Data. R package version 0.2.3. https://CRAN.R-project.org/package=simsurv
-- Therneau T (2020). _A Package for Survival Analysis in R_. R package version 3.2-7, https://CRAN.R-project.org/package=survival.
+- Sam Brilleman (2019). simsurv: Simulate Survival Data. R package
+  version 0.2.3. https://CRAN.R-project.org/package=simsurv
