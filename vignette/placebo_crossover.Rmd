@@ -8,7 +8,7 @@ output: html_document
 ---
 
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE, message = FALSE, cache.lazy = FALSE)
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, cache.lazy = FALSE, cache = TRUE)
 ```
 
 ```{r libraries, include = FALSE}
@@ -62,6 +62,7 @@ $(t_0,t_1],\ (t_1,t_2],\dots,\ (t_7,t_8]$, and follow a seasonal pattern
 calibrated so we have an average of 50 events on the placebo arm in the first three months, 75 in months 4-6, 50 in months 7-9, and 25 in months 10-12 of the first study year. The baseline hazards in the subsequent study year are halved.
 
 We integrate the hazard and obtain the survival function. Event times can then be simulated via the inverse CDF method. This is facilitated via wrappers implemented in the `simsurv` package (Brilleman, 2019). 
+
 
 # Functions to Simulate COVID-19 Trials
 
@@ -438,7 +439,7 @@ simr_waning <- reshape_dat(sim_waning, align_entry = FALSE)
 
 Here's what our simulated data looks like. Note that it will be convenient to have vaccination coded as a time-varying covariate, which for the placebo group will change values after the placebo participants are crossed over.
 
-```{r plot_dat, echo = FALSE, cache = TRUE, dependson="sim_trial"}
+```{r plot_dat, echo = FALSE, cache = TRUE, fig.width=8, fig.height=4}
 # plot it
 plot_sim <- survfit(Surv(entry, eventtime, status) ~ trt, data = sim_waning)
 ggsurvplot(plot_sim, 
@@ -448,8 +449,9 @@ ggsurvplot(plot_sim,
            theme = theme_minimal())
 ```
 
-```{r dat_table, cache = TRUE, echo = FALSE, dependson="sim_trial"}
+```{r dat_table, cache = TRUE, echo = FALSE}
 simr_waning %>% 
+  subset(id %in% c(1:10)) %>% 
   kbl() %>%
   kable_paper(bootstrap_options = c("striped", "hover", "condensed", "responsive"),
                 full_width = FALSE) %>% 
@@ -458,10 +460,10 @@ simr_waning %>%
 
 # Inference
 
-We'll fit two models. The first is the true data generating model, where VE decays linearly on the log hazard scale. Second, we'll model the VE decay profile using a P-spline. In practice, it is important in both of these models to recognize that we need to evaluate the value of the time-varying VE profile for each participant at each event time, not just at the failure time of that particular participant. The `tt()` functionality in the `survival` package will facilitate this. 
+We'll fit two models. The first is the true data generating model, where VE decays linearly on the log hazard scale. Second, we'll model the VE decay profile using a P-spline. In practice, it is important in both of these models to recognize that we need to evaluate the value of the time-varying VE profile for each participant at each event time, not just at the failure time of that particular participant. The `tt()` function in the `survival` package generates an expanded dataset that evaluates the value of a time-varying functional, in this case the VE profile, at each event time. An in-depth explanation on use of the `tt()` function is provided in the [survival vignette](https://cran.r-project.org/web/packages/survival/vignettes/timedep.pdf).
 
-We'll start with the log-linear decay model
-```{r fit_lin, cache = TRUE, echo = TRUE, dependson="sim_trial"}
+We'll start by fitting the log-linear decay model. Note that the `vacc` variable is a time-varying covariate for vaccination status, and that the decay profile is a function of the time since vaccination, `tvacc`. The `tt()` function then maps time since vaccination to either zero, or the time elapsed between when a subject was vaccinated and the current event time. The model is fit as follows:
+```{r fit_lin, cache = TRUE, echo = TRUE}
 # Cox PH model with log-linear decay
 # note that time since vaccination is a time-varying parameter.
 # also, vacc is a time-varying covariate.
@@ -480,7 +482,7 @@ fit_lin
 
 And now we fit the P-spline decay model.
 
-```{r fit_ps, cache = TRUE, echo = TRUE, dependson="sim_trial"}
+```{r fit_ps, cache = TRUE, echo = TRUE}
 # p-spline decay model. again, time since vaccination is a time-varying
 # parameter and vacc is a time-varying covariate.
 fit_ps = 
@@ -546,7 +548,7 @@ VE_ests$upper =
     sqrt(apply(times_ps, 1, function(x) (x - centvec) %*% vcov(fit_ps) %*% t(x - centvec))))
 ```
 
-```{r plot_VE}
+```{r plot_VE, fig.height=4, fig.width=8}
 require(ggthemes)
 VE_ests %>% 
   ggplot(aes(x = time)) + 
