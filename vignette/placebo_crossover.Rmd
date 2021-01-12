@@ -4,7 +4,7 @@ author:
   - "Jon Fintzi and Dean Follmann"
   - "Biostatistics Research Branch, NIAID, NIH"
 date: "12/28/2020"
-output: html_document
+output: pdf_document
 ---
 
 ```{r setup, include=FALSE}
@@ -397,9 +397,9 @@ reshape_dat <- function(dat, align_entry = FALSE) {
 
 # Simulating a COVID-19 Vaccine Trial
 
-Let's go ahead and simulate a trial. We'll set the parameters and RNG seed, then simulate a trial. Note again that we are crossing over the placebo arm at 1 year post study initiation and that VE wanes from 85% to 35%, linearly on the log hazard scale, over 1.5 years.
+We start by setting up the parameters for a COVID-19 vaccine trial. The time of crossover is 1 year and we'll have a seasonally varying attack rate. VE is calibrated to wane linearly on the log-hazard scale from 85% to 35% over 1.5 years.
 
-```{r sim_trial, echo = TRUE, cache = TRUE}
+```{r trial_pars, echo = TRUE, cache = TRUE}
 
 # set up parameters
 t_cross = 1    # time of crossover
@@ -421,7 +421,11 @@ sim_pars_waning =
       lambda_7 = 0.0067,      # 25 / 3 months
       lambda_8 = 0.0033,      # 12.5 / 3 mo
       lambda_9 = 0.0067)      # 25 / 3 mo
+```
 
+Let's go ahead and simulate a trial. We'll set the parameters and RNG seed, then simulate a trial. 
+
+```{r sim_trial, echo = TRUE, cache = TRUE, eval = FALSE}
 # set.seed
 set.seed(1834)
 
@@ -435,6 +439,17 @@ sim_waning <-
 
 # reshape the simulated dataset
 simr_waning <- reshape_dat(sim_waning, align_entry = FALSE)
+
+# save the datasets
+# saveRDS(sim_waning, file = "sim_waning.Rds")
+# saveRDS(simr_waning, file = "simr_waning.Rds")
+```
+
+```{r load_sim_dat, cache = TRUE, echo=FALSE}
+# note, if compiling make sure the simulated trials are in the same directory
+# as the Rmarkdown script
+sim_waning = readRDS("sim_waning.Rds")
+simr_waning = readRDS("simr_waning.Rds")
 ```
 
 Here's what our simulated data looks like. Note that it will be convenient to have vaccination coded as a time-varying covariate, which for the placebo group will change values after the placebo participants are crossed over.
@@ -452,10 +467,7 @@ ggsurvplot(plot_sim,
 ```{r dat_table, cache = TRUE, echo = FALSE}
 simr_waning %>% 
   subset(id %in% c(1:10)) %>% 
-  kbl() %>%
-  kable_paper(bootstrap_options = c("striped", "hover", "condensed", "responsive"),
-                full_width = FALSE) %>% 
-  scroll_box(width = "100%", height = "200px")
+  kbl()
 ```
 
 # Inference
