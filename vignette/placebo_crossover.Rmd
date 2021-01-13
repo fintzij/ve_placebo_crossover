@@ -8,7 +8,9 @@ output: pdf_document
 ---
 
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE, message = FALSE, cache.lazy = FALSE, cache = TRUE)
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, 
+                      cache.lazy = FALSE, 
+                      cache = TRUE)
 ```
 
 ```{r libraries, include = FALSE}
@@ -425,7 +427,7 @@ sim_pars_waning =
 
 Let's go ahead and simulate a trial. We'll set the parameters and RNG seed, then simulate a trial. 
 
-```{r sim_trial, echo = TRUE, cache = TRUE, eval = FALSE}
+```{r sim_trial, echo = TRUE, cache = TRUE, eval = TRUE}
 # set.seed
 set.seed(1834)
 
@@ -441,11 +443,11 @@ sim_waning <-
 simr_waning <- reshape_dat(sim_waning, align_entry = FALSE)
 
 # save the datasets
-# saveRDS(sim_waning, file = "sim_waning.Rds")
-# saveRDS(simr_waning, file = "simr_waning.Rds")
+saveRDS(sim_waning, file = "sim_waning.Rds")
+saveRDS(simr_waning, file = "simr_waning.Rds")
 ```
 
-```{r load_sim_dat, cache = TRUE, echo=FALSE}
+```{r load_sim_dat, cache = TRUE, echo=FALSE, eval = FALSE}
 # note, if compiling make sure the simulated trials are in the same directory
 # as the Rmarkdown script
 sim_waning = readRDS("sim_waning.Rds")
